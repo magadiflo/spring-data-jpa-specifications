@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -53,5 +54,27 @@ public class EmployeeServiceImpl implements IEmployeeService {
         }
 
         return this.employeeRepository.findAll(employeeSpec, pageable);
+    }
+
+    @Override
+    public Page<Employee> searchEmployees(Integer xYears, String departmentName, Pageable pageable) {
+        Specification<Employee> employeeSpec = Specification.where(null);
+
+        // Suponiendo que la lógica de negocio dice que los xYears deben estar entre [1 - 20] años
+        if (Objects.nonNull(xYears) && xYears <= 20 && xYears >= 1) {
+            employeeSpec = employeeSpec.and(EmployeeSpecifications.hasAHiringDateGreaterThanXYears(xYears));
+        }
+
+        if (StringUtils.hasText(departmentName)) {
+            employeeSpec = employeeSpec.and(EmployeeSpecifications.hasDepartmentName(departmentName));
+        }
+
+        return this.employeeRepository.findAll(employeeSpec, pageable);
+    }
+
+    @Override
+    public List<Employee> searchEmployees(LocalDate initialDate, String firstName, String departmentName) {
+        Specification<Employee> specification = EmployeeSpecifications.hasHireDateBetweenTwoDatesOrGetByDepartmentName(initialDate, firstName, departmentName);
+        return this.employeeRepository.findAll(specification);
     }
 }

@@ -922,3 +922,377 @@ $ curl -v -G --data "minSalary=3000&departmentName=Sistemas" http://localhost:80
   "empty": false
 }
 ````
+
+## Creando otro ejemplo de Specification
+
+````java
+
+@NoArgsConstructor(access = AccessLevel.PRIVATE)
+@Slf4j
+public class EmployeeSpecifications {
+    /* other methods */
+    public static Specification<Employee> hasAHiringDateGreaterThanXYears(Integer xYears) {
+        return (root, query, criteriaBuilder) -> {
+            LocalDate localDate = LocalDate.now().minusYears(xYears);
+            log.info("Fecha actual: {}, Años de antigüedad mayor a: {}", LocalDate.now(), xYears);
+            return criteriaBuilder.lessThan(root.get(Employee_.HIRE_DATE), localDate);
+        };
+    }
+}
+````
+
+````java
+public interface IEmployeeService {
+    /* other codes */
+    Page<Employee> searchEmployees(Integer xYears, String departmentName, Pageable pageable);
+}
+````
+
+````java
+
+@RequiredArgsConstructor
+@Slf4j
+@Service
+public class EmployeeServiceImpl implements IEmployeeService {
+    /* other codes */
+    @Override
+    public Page<Employee> searchEmployees(Integer xYears, String departmentName, Pageable pageable) {
+        Specification<Employee> employeeSpec = Specification.where(null);
+
+        // Suponiendo que la lógica de negocio dice que los xYears deben estar entre [1 - 20] años
+        if (Objects.nonNull(xYears) && xYears <= 20 && xYears >= 1) {
+            employeeSpec = employeeSpec.and(EmployeeSpecifications.hasAHiringDateGreaterThanXYears(xYears));
+        }
+
+        if (StringUtils.hasText(departmentName)) {
+            employeeSpec = employeeSpec.and(EmployeeSpecifications.hasDepartmentName(departmentName));
+        }
+
+        return this.employeeRepository.findAll(employeeSpec, pageable);
+    }
+}
+````
+
+````java
+
+@RequiredArgsConstructor
+@RestController
+@RequestMapping(path = "/api/v1/employees")
+public class EmployeeRestController {
+    /* other methods */
+    @GetMapping(path = "/search-old-employees")
+    public ResponseEntity<Page<Employee>> searchEmployees(
+            @RequestParam(required = false) Integer xYears,
+            @RequestParam(required = false) String departmentName,
+            @RequestParam(required = false, defaultValue = "0") int pageNumber,
+            @RequestParam(required = false, defaultValue = "5") int pageSize,
+            @SortDefault(sort = "id", direction = Sort.Direction.ASC) Sort sort) {
+
+        Pageable pageable = PageRequest.of(pageNumber, pageSize, sort);
+        return ResponseEntity.ok(this.employeeService.searchEmployees(xYears, departmentName, pageable));
+    }
+}
+````
+
+````bash
+$ curl -v -G --data "xYears=20" http://localhost:8080/api/v1/employees/search-old-employees | jq
+
+>
+< HTTP/1.1 200
+<
+{
+  "content": [
+    {
+      "id": 3,
+      "firstName": "Arely",
+      "lastName": "Caldas",
+      "email": "arely@gmail.com",
+      "phoneNumber": "985965896",
+      "hireDate": "2002-12-08",
+      "salary": 3650,
+      "department": {
+        "id": 2,
+        "code": "D02",
+        "name": "Administración",
+        "phoneNumber": "325089"
+      }
+    }
+  ],
+  "pageable": {
+    "pageNumber": 0,
+    "pageSize": 5,
+    "sort": {
+      "empty": false,
+      "sorted": true,
+      "unsorted": false
+    },
+    "offset": 0,
+    "unpaged": false,
+    "paged": true
+  },
+  "last": true,
+  "totalPages": 1,
+  "totalElements": 1,
+  "size": 5,
+  "number": 0,
+  "sort": {
+    "empty": false,
+    "sorted": true,
+    "unsorted": false
+  },
+  "numberOfElements": 1,
+  "first": true,
+  "empty": false
+}
+````
+
+## Creando otro ejemplo adicional de Specification
+
+En los ejemplos anteriores la lógica de creación del criterio de búsqueda lo hacíamos en la clase de servicio, en este
+ejemplo vemos que estamos colocando toda la lógica dentro del mismo método de especificación. El único propósito es
+para ver el uso de otros métodos como el `conjuntion()`, `disjuntion()`, `orderBy`, `desc`, `asc`, etc. y ver cómo
+estos métodos trabajan en conjunto. Pero:
+
+> Sería recomendable (según yo), definir cada método estático de especificación que haga una sola tarea, por ejemplo,
+> ver que el `hireDate` esté entres dos rangos de fecha, etc., tal como lo hemos venido haciendo en métodos anteriores,
+> de esa forma, podríamos reutilizar estos métodos para elaborar nuevas condiciones de consulta.
+
+````java
+
+@NoArgsConstructor(access = AccessLevel.PRIVATE)
+@Slf4j
+public class EmployeeSpecifications {
+    /* other methods */
+    public static Specification<Employee> hasHireDateBetweenTwoDatesOrGetByDepartmentName(LocalDate initialDate, String firstName, String departmentName) {
+        return (root, query, criteriaBuilder) -> {
+            /**
+             * criteriaBuilder.conjunction(), crea una conjunción (con cero conjunciones).
+             * Una conjunción con cero conjunciones es verdadera.
+             *
+             * criteriaBuilder.disjunction(), crea una disyunción (con cero disyunciones).
+             * Una disyunción con cero disyunciones es falsa.
+             *
+             * Predicate, el tipo de predicado simple o compuesto: una conjunción o disyunción de restricciones.
+             * Se considera que un predicado simple es una conjunción con una sola conjunción.
+             */
+            Predicate conjunction = criteriaBuilder.conjunction(); // 1=1
+            Predicate disjunction = criteriaBuilder.disjunction(); // 1<>1
+            LocalDate currentDate = LocalDate.now();
+
+            log.info("{} es menor que la fecha actual {}", initialDate, currentDate);
+
+            if (Objects.nonNull(initialDate) && initialDate.isBefore(currentDate)) {
+                Predicate between = criteriaBuilder.between(root.get(Employee_.HIRE_DATE), initialDate, currentDate);
+                conjunction = criteriaBuilder.and(conjunction, between);
+            }
+
+            if (StringUtils.hasText(firstName)) {
+                Predicate like = criteriaBuilder.like(root.get(Employee_.FIRST_NAME), "%" + firstName + "%");
+                conjunction = criteriaBuilder.and(conjunction, like);
+            }
+
+            if (StringUtils.hasText(departmentName)) {
+                Predicate equal = criteriaBuilder.equal(root.get(Employee_.DEPARTMENT).get(Department_.NAME), departmentName);
+                disjunction = criteriaBuilder.or(disjunction, equal);
+            }
+
+            query.orderBy(
+                    criteriaBuilder.desc(root.get(Employee_.FIRST_NAME)),
+                    criteriaBuilder.asc(root.get(Employee_.ID))
+            );
+
+            return criteriaBuilder.or(conjunction, disjunction);
+        };
+    }
+}
+````
+
+````java
+public interface IEmployeeService {
+    List<Employee> searchEmployees(LocalDate initialDate, String firstName, String departmentName);
+}
+````
+
+````java
+
+@RequiredArgsConstructor
+@Slf4j
+@Service
+public class EmployeeServiceImpl implements IEmployeeService {
+    /* other methods */
+    @Override
+    public List<Employee> searchEmployees(LocalDate initialDate, String firstName, String departmentName) {
+        Specification<Employee> specification = EmployeeSpecifications.hasHireDateBetweenTwoDatesOrGetByDepartmentName(initialDate, firstName, departmentName);
+        return this.employeeRepository.findAll(specification);
+    }
+}
+````
+
+````java
+
+@RequiredArgsConstructor
+@RestController
+@RequestMapping(path = "/api/v1/employees")
+public class EmployeeRestController {
+    /* other methods */
+    @GetMapping(path = "/search-no-pagination")
+    public ResponseEntity<List<Employee>> searchEmployees(
+            @RequestParam(required = false) LocalDate initialDate,
+            @RequestParam(required = false) String firstName,
+            @RequestParam(required = false) String departmentName) {
+
+        return ResponseEntity.ok(this.employeeService.searchEmployees(initialDate, firstName, departmentName));
+    }
+}
+````
+
+La consulta principal generada en consola es la siguiente:
+
+````bash
+2024-03-01T12:23:54.366-05:00  INFO 10540 --- [spring-data-jpa-specifications] [nio-8080-exec-3] d.m.s.a.p.r.s.EmployeeSpecifications     : 2019-01-01 es menor que la fecha actual 2024-03-01
+2024-03-01T12:23:54.371-05:00 DEBUG 10540 --- [spring-data-jpa-specifications] [nio-8080-exec-3] org.hibernate.SQL                        : 
+    select
+        e1_0.id,
+        e1_0.department_id,
+        e1_0.email,
+        e1_0.first_name,
+        e1_0.hire_date,
+        e1_0.last_name,
+        e1_0.phone_number,
+        e1_0.salary 
+    from
+        employees e1_0 
+    join
+        departments d1_0 
+            on d1_0.id=e1_0.department_id 
+    where
+        1=1 
+        and e1_0.hire_date between ? and ? 
+        and e1_0.first_name like replace(?, '\\', '\\\\') 
+        or 1<>1 
+        or d1_0.name=? 
+    order by
+        e1_0.first_name desc,
+        e1_0.id
+````
+
+De la consulta anterior, lo más interesante es la sección del `WHERE`, ya que aquí vemos cómo es que se ha generado
+el criterio de búsqueda. Si analizamos el método de especificación `hasHireDateBetweenTwoDatesOrGetByDepartmentName`,
+veremos que coincide exactamente como lo hemos definido:
+
+````SQL
+where
+  1=1 
+  and e1_0.hire_date between ? and ? 
+  and e1_0.first_name like replace(?, '\\', '\\\\') 
+  or 1<>1 
+  or d1_0.name=? 
+````
+
+El SQL principal generado anteriormente surge a partir de haber realizado la siguiente request (hay otro select que se
+genera pero es para buscar los departamentos, en este caso solo muestro en la parte superior el SQL principal):
+
+````bash
+$ curl -v -G --data "initialDate=2019-01-01&firstName=Liz&departmentName=Soporte" http://localhost:8080/api/v1/employees/search-no-pagination | jq
+
+>
+< HTTP/1.1 200
+<
+[
+  {
+    "id": 9,
+    "firstName": "Liz",
+    "lastName": "Azaña",
+    "email": "estela@gmail.com",
+    "phoneNumber": "943852525",
+    "hireDate": "2020-03-15",
+    "salary": 2600,
+    "department": {
+      "id": 4,
+      "code": "D04",
+      "name": "Recursos Humanos",
+      "phoneNumber": "378965"
+    }
+  },
+  {
+    "id": 11,
+    "firstName": "Judith",
+    "lastName": "Alegría",
+    "email": "ciro@gmail.com",
+    "phoneNumber": "943851697",
+    "hireDate": "2015-03-29",
+    "salary": 5455,
+    "department": {
+      "id": 5,
+      "code": "D05",
+      "name": "Soporte",
+      "phoneNumber": "321478"
+    }
+  }
+]
+````
+
+Qué pasa si mandamos un request sin ningún parámetro:
+
+````bash
+$ curl -v http://localhost:8080/api/v1/employees/search-no-pagination | jq
+
+>
+< HTTP/1.1 200
+<
+[
+  {
+    "id": 10,
+    "firstName": "Pedro",
+    "lastName": "Alcántara",
+    "email": "palcantara@gmail.com",
+    "phoneNumber": "948751523",
+    "hireDate": "2015-12-28",
+    "salary": 3600,
+    "department": {
+      "id": 4,
+      "code": "D04",
+      "name": "Recursos Humanos",
+      "phoneNumber": "378965"
+    }
+  },
+  {...}
+  {
+    "id": 3,
+    "firstName": "Arely",
+    "lastName": "Caldas",
+    "email": "arely@gmail.com",
+    "phoneNumber": "985965896",
+    "hireDate": "2002-12-08",
+    "salary": 3650,
+    "department": {
+      "id": 2,
+      "code": "D02",
+      "name": "Administración",
+      "phoneNumber": "325089"
+    }
+  }
+]
+````
+
+Como vemos, el request nos trae todos los registros de empleados. La consulta SQL principal generada en consola es:
+
+````bash
+select
+        e1_0.id,
+        e1_0.department_id,
+        e1_0.email,
+        e1_0.first_name,
+        e1_0.hire_date,
+        e1_0.last_name,
+        e1_0.phone_number,
+        e1_0.salary 
+    from
+        employees e1_0 
+    where
+        1=1 
+        or 1<>1 
+    order by
+        e1_0.first_name desc,
+        e1_0.id
+````

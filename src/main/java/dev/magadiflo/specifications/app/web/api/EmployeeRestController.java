@@ -11,6 +11,7 @@ import org.springframework.data.web.SortDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @RequiredArgsConstructor
@@ -43,5 +44,26 @@ public class EmployeeRestController {
 
         Pageable pageable = PageRequest.of(pageNumber, pageSize, sort);
         return ResponseEntity.ok(this.employeeService.searchEmployees(firstName, minSalary, departmentName, pageable));
+    }
+
+    @GetMapping(path = "/search-old-employees")
+    public ResponseEntity<Page<Employee>> searchEmployees(
+            @RequestParam(required = false) Integer xYears,
+            @RequestParam(required = false) String departmentName,
+            @RequestParam(required = false, defaultValue = "0") int pageNumber,
+            @RequestParam(required = false, defaultValue = "5") int pageSize,
+            @SortDefault(sort = "id", direction = Sort.Direction.ASC) Sort sort) {
+
+        Pageable pageable = PageRequest.of(pageNumber, pageSize, sort);
+        return ResponseEntity.ok(this.employeeService.searchEmployees(xYears, departmentName, pageable));
+    }
+
+    @GetMapping(path = "/search-no-pagination")
+    public ResponseEntity<List<Employee>> searchEmployees(
+            @RequestParam(required = false) LocalDate initialDate,
+            @RequestParam(required = false) String firstName,
+            @RequestParam(required = false) String departmentName) {
+
+        return ResponseEntity.ok(this.employeeService.searchEmployees(initialDate, firstName, departmentName));
     }
 }
