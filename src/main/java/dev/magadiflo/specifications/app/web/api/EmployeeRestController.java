@@ -3,6 +3,11 @@ package dev.magadiflo.specifications.app.web.api;
 import dev.magadiflo.specifications.app.persistence.entity.Employee;
 import dev.magadiflo.specifications.app.service.IEmployeeService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.SortDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -25,5 +30,18 @@ public class EmployeeRestController {
         return this.employeeService.getEmployee(employeeId)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @GetMapping(path = "/search-specifications")
+    public ResponseEntity<Page<Employee>> searchEmployees(
+            @RequestParam(required = false) String firstName,
+            @RequestParam(required = false) Double minSalary,
+            @RequestParam(required = false) String departmentName,
+            @RequestParam(required = false, defaultValue = "0") int pageNumber,
+            @RequestParam(required = false, defaultValue = "5") int pageSize,
+            @SortDefault(sort = "id", direction = Sort.Direction.ASC) Sort sort) {
+
+        Pageable pageable = PageRequest.of(pageNumber, pageSize, sort);
+        return ResponseEntity.ok(this.employeeService.searchEmployees(firstName, minSalary, departmentName, pageable));
     }
 }

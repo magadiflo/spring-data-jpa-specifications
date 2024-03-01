@@ -12,6 +12,6 @@ INSERT INTO employees(first_name, last_name, email, phone_number, hire_date, sal
 INSERT INTO employees(first_name, last_name, email, phone_number, hire_date, salary, department_id) VALUES('María', 'Mendoza', 'mendoza@gmail.com', '913589698', '2013-09-25', 2900, 3);
 INSERT INTO employees(first_name, last_name, email, phone_number, hire_date, salary, department_id) VALUES('Carla', 'Zúñiga', 'zuniga@gmail.com', '943698596', '2015-07-01', 3700, 3);
 INSERT INTO employees(first_name, last_name, email, phone_number, hire_date, salary, department_id) VALUES('Carmen', 'Vega', 'vega@gmail.com', '963258961', '2015-06-18', 1900, 4);
-INSERT INTO employees(first_name, last_name, email, phone_number, hire_date, salary, department_id) VALUES('Estela', 'Sullón', 'estela@gmail.com', '943852525', '2020-03-15', 2600, 4);
+INSERT INTO employees(first_name, last_name, email, phone_number, hire_date, salary, department_id) VALUES('Liz', 'Azaña', 'estela@gmail.com', '943852525', '2020-03-15', 2600, 4);
 INSERT INTO employees(first_name, last_name, email, phone_number, hire_date, salary, department_id) VALUES('Pedro', 'Alcántara', 'palcantara@gmail.com', '948751523', '2015-12-28', 3600, 4);
 INSERT INTO employees(first_name, last_name, email, phone_number, hire_date, salary, department_id) VALUES('Judith', 'Alegría', 'ciro@gmail.com', '943851697', '2015-03-29', 5455, 5);
