@@ -39,18 +39,8 @@ public class EmployeeSpecifications {
 
     public static Specification<Employee> hasHireDateBetweenTwoDatesOrGetByDepartmentName(LocalDate initialDate, String firstName, String departmentName) {
         return (root, query, criteriaBuilder) -> {
-            /**
-             * criteriaBuilder.conjunction(), crea una conjunción (con cero conjunciones).
-             * Una conjunción con cero conjunciones es verdadera.
-             *
-             * criteriaBuilder.disjunction(), crea una disyunción (con cero disyunciones).
-             * Una disyunción con cero disyunciones es falsa.
-             *
-             * Predicate, el tipo de predicado simple o compuesto: una conjunción o disyunción de restricciones.
-             * Se considera que un predicado simple es una conjunción con una sola conjunción.
-             */
-            Predicate conjunction = criteriaBuilder.conjunction();
-            Predicate disjunction = criteriaBuilder.disjunction();
+            Predicate conjunction = criteriaBuilder.conjunction(); // 1=1, inicializa con una condición AND vacía, como verdadero
+            Predicate disjunction = criteriaBuilder.disjunction(); // 1<>1, inicializa con una condición OR vacía, como falso
             LocalDate currentDate = LocalDate.now();
 
             log.info("{} es menor que la fecha actual {}", initialDate, currentDate);
@@ -75,7 +65,15 @@ public class EmployeeSpecifications {
                     criteriaBuilder.asc(root.get(Employee_.ID))
             );
 
-            return criteriaBuilder.or(conjunction, disjunction);
+            if (conjunction.getExpressions().isEmpty() && disjunction.getExpressions().isEmpty()) {
+                return null;
+            } else if (!conjunction.getExpressions().isEmpty() && !disjunction.getExpressions().isEmpty()) {
+                return criteriaBuilder.or(conjunction, disjunction);
+            } else if (!conjunction.getExpressions().isEmpty()) {
+                return conjunction;
+            } else {
+                return disjunction;
+            }
         };
     }
 }

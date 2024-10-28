@@ -1054,7 +1054,7 @@ para ver el uso de otros métodos como el `conjuntion()`, `disjuntion()`, `order
 estos métodos trabajan en conjunto. Pero:
 
 > Sería recomendable (según yo), definir cada método estático de especificación que haga una sola tarea, por ejemplo,
-> ver que el `hireDate` esté entres dos rangos de fecha, etc., tal como lo hemos venido haciendo en métodos anteriores,
+> ver que el `hireDate` esté entre dos rangos de fecha, etc., tal como lo hemos venido haciendo en métodos anteriores,
 > de esa forma, podríamos reutilizar estos métodos para elaborar nuevas condiciones de consulta.
 
 ````java
@@ -1065,18 +1065,8 @@ public class EmployeeSpecifications {
     /* other methods */
     public static Specification<Employee> hasHireDateBetweenTwoDatesOrGetByDepartmentName(LocalDate initialDate, String firstName, String departmentName) {
         return (root, query, criteriaBuilder) -> {
-            /**
-             * criteriaBuilder.conjunction(), crea una conjunción (con cero conjunciones).
-             * Una conjunción con cero conjunciones es verdadera.
-             *
-             * criteriaBuilder.disjunction(), crea una disyunción (con cero disyunciones).
-             * Una disyunción con cero disyunciones es falsa.
-             *
-             * Predicate, el tipo de predicado simple o compuesto: una conjunción o disyunción de restricciones.
-             * Se considera que un predicado simple es una conjunción con una sola conjunción.
-             */
-            Predicate conjunction = criteriaBuilder.conjunction(); // 1=1
-            Predicate disjunction = criteriaBuilder.disjunction(); // 1<>1
+            Predicate conjunction = criteriaBuilder.conjunction(); // 1=1, inicializa con una condición AND vacía, como verdadero
+            Predicate disjunction = criteriaBuilder.disjunction(); // 1<>1, inicializa con una condición OR vacía, como falso
             LocalDate currentDate = LocalDate.now();
 
             log.info("{} es menor que la fecha actual {}", initialDate, currentDate);
@@ -1101,11 +1091,39 @@ public class EmployeeSpecifications {
                     criteriaBuilder.asc(root.get(Employee_.ID))
             );
 
-            return criteriaBuilder.or(conjunction, disjunction);
+            if (conjunction.getExpressions().isEmpty() && disjunction.getExpressions().isEmpty()) {
+                return null;
+            } else if (!conjunction.getExpressions().isEmpty() && !disjunction.getExpressions().isEmpty()) {
+                return criteriaBuilder.or(conjunction, disjunction);
+            } else if (!conjunction.getExpressions().isEmpty()) {
+                return conjunction;
+            } else {
+                return disjunction;
+            }
         };
     }
 }
 ````
+
+- `criteriaBuilder.conjunction()`, crea una conjunción (con cero conjunciones). Una conjunción con cero conjunciones es
+  `verdadera`. Es útil cuando deseas empezar una consulta dinámica sin ningún criterio específico, y luego agregar
+  condiciones adicionales con `AND`. Si no se le agregan más predicados, el `conjunction()` por sí solo no afecta la
+  consulta, ya que representa una condición `verdadera`.
+
+
+- `criteriaBuilder.disjunction()`, crea una disyunción (con cero disyunciones). Una disyunción con cero disyunciones es
+  `falsa`. Al igual que con conjunction(), `disjunction()` se usa para iniciar una consulta dinámica, pero en este caso
+  con condiciones `OR`. Si no se le añaden predicados adicionales, `disjunction()` hará que la condición sea falsa, ya
+  que es una representación de OR sin condiciones.
+
+
+- `Predicate`, tipo de predicado simple o compuesto: `conjunción o disyunción` de restricciones. Se considera predicado
+  simple a una conjunción con un único conjuntivo. Un `Predicate` es una condición lógica que define un criterio de
+  filtrado para la consulta, como un `filtro`. Puedes pensar en un `Predicate` como una expresión que evalúa si ciertos
+  datos deben incluirse en el resultado de la consulta, dependiendo de si cumplen o no la condición. Cuando construyes
+  consultas con Specifications, el `Predicate` te permite combinar condiciones `(WHERE)` con operadores lógicos, como
+  `AND` y `OR`. En JPA, el `Predicate` puede encapsular condiciones simples (como comparaciones) o combinar múltiples
+  condiciones mediante `conjunction()` o `disjunction()`.
 
 ````java
 public interface IEmployeeService {
@@ -1146,11 +1164,56 @@ public class EmployeeRestController {
 }
 ````
 
-La consulta principal generada en consola es la siguiente:
+Si realizamos la siguiente petición a nuestro endpoint enviándole valores para los tres parámetros veremos el
+siguiente resultado.
 
 ````bash
-2024-03-01T12:23:54.366-05:00  INFO 10540 --- [spring-data-jpa-specifications] [nio-8080-exec-3] d.m.s.a.p.r.s.EmployeeSpecifications     : 2019-01-01 es menor que la fecha actual 2024-03-01
-2024-03-01T12:23:54.371-05:00 DEBUG 10540 --- [spring-data-jpa-specifications] [nio-8080-exec-3] org.hibernate.SQL                        : 
+$ curl -v -G --data "initialDate=2019-01-01&firstName=Liz&departmentName=Soporte" http://localhost:8080/api/v1/employees/search-no-pagination | jq
+>
+< HTTP/1.1 200
+< Content-Type: application/json
+< Transfer-Encoding: chunked
+< Date: Mon, 28 Oct 2024 22:02:42 GMT
+<
+[
+  {
+    "id": 9,
+    "firstName": "Liz",
+    "lastName": "Azaña",
+    "email": "estela@gmail.com",
+    "phoneNumber": "943852525",
+    "hireDate": "2020-03-15",
+    "salary": 2600,
+    "department": {
+      "id": 4,
+      "code": "D04",
+      "name": "Recursos Humanos",
+      "phoneNumber": "378965"
+    }
+  },
+  {
+    "id": 11,
+    "firstName": "Judith",
+    "lastName": "Alegría",
+    "email": "ciro@gmail.com",
+    "phoneNumber": "943851697",
+    "hireDate": "2015-03-29",
+    "salary": 5455,
+    "department": {
+      "id": 5,
+      "code": "D05",
+      "name": "Soporte",
+      "phoneNumber": "321478"
+    }
+  }
+]
+````
+
+A continuación se muestra la consulta SQL principal generada en el IDE para la solicitud anterior.
+
+````bash
+2024-10-28T17:02:42.428-05:00  INFO 17436 --- [spring-data-jpa-specifications] [nio-8080-exec-2] d.m.s.a.p.r.s.EmployeeSpecifications     : 2019-01-01 es menor que la fecha actual 2024-10-28
+2024-10-28T17:02:42.690-05:00 DEBUG 17436 --- [spring-data-jpa-specifications] [nio-8080-exec-2] org.hibernate.SQL                        : 
     select
         e1_0.id,
         e1_0.department_id,
@@ -1189,56 +1252,15 @@ where
   or d1_0.name=? 
 ````
 
-El SQL principal generado anteriormente surge a partir de haber realizado la siguiente request (hay otro select que se
-genera pero es para buscar los departamentos, en este caso solo muestro en la parte superior el SQL principal):
-
-````bash
-$ curl -v -G --data "initialDate=2019-01-01&firstName=Liz&departmentName=Soporte" http://localhost:8080/api/v1/employees/search-no-pagination | jq
-
->
-< HTTP/1.1 200
-<
-[
-  {
-    "id": 9,
-    "firstName": "Liz",
-    "lastName": "Azaña",
-    "email": "estela@gmail.com",
-    "phoneNumber": "943852525",
-    "hireDate": "2020-03-15",
-    "salary": 2600,
-    "department": {
-      "id": 4,
-      "code": "D04",
-      "name": "Recursos Humanos",
-      "phoneNumber": "378965"
-    }
-  },
-  {
-    "id": 11,
-    "firstName": "Judith",
-    "lastName": "Alegría",
-    "email": "ciro@gmail.com",
-    "phoneNumber": "943851697",
-    "hireDate": "2015-03-29",
-    "salary": 5455,
-    "department": {
-      "id": 5,
-      "code": "D05",
-      "name": "Soporte",
-      "phoneNumber": "321478"
-    }
-  }
-]
-````
-
-Qué pasa si mandamos un request sin ningún parámetro:
+Ahora, qué pasa si mandamos una solicitud sin ningún valor en los parámetros.
 
 ````bash
 $ curl -v http://localhost:8080/api/v1/employees/search-no-pagination | jq
-
 >
 < HTTP/1.1 200
+< Content-Type: application/json
+< Transfer-Encoding: chunked
+< Date: Mon, 28 Oct 2024 22:07:10 GMT
 <
 [
   {
@@ -1256,7 +1278,7 @@ $ curl -v http://localhost:8080/api/v1/employees/search-no-pagination | jq
       "phoneNumber": "378965"
     }
   },
-  {...}
+  {...},
   {
     "id": 3,
     "firstName": "Arely",
@@ -1275,10 +1297,117 @@ $ curl -v http://localhost:8080/api/v1/employees/search-no-pagination | jq
 ]
 ````
 
-Como vemos, el request nos trae todos los registros de empleados. La consulta SQL principal generada en consola es:
+Como vemos, el request nos trae todos los registros de los empleados. La consulta SQL principal generada en consola es:
 
 ````bash
-select
+2024-10-28T17:07:10.188-05:00 DEBUG 17436 --- [spring-data-jpa-specifications] [nio-8080-exec-4] org.hibernate.SQL                        : 
+    select
+        e1_0.id,
+        e1_0.department_id,
+        e1_0.email,
+        e1_0.first_name,
+        e1_0.hire_date,
+        e1_0.last_name,
+        e1_0.phone_number,
+        e1_0.salary 
+    from
+        employees e1_0 
+    order by
+        e1_0.first_name desc,
+        e1_0.id
+````
+
+Ahora, realizaremos una petición enviándo valor únicamente al `departmentName`.
+
+````bash
+$ curl -v -G --data "departmentName=Soporte" http://localhost:8080/api/v1/employees/search-no-pagination | jq
+>
+* Request completely sent off
+< HTTP/1.1 200
+< Content-Type: application/json
+< Transfer-Encoding: chunked
+< Date: Mon, 28 Oct 2024 22:08:41 GMT
+<
+[
+  {
+    "id": 11,
+    "firstName": "Judith",
+    "lastName": "Alegría",
+    "email": "ciro@gmail.com",
+    "phoneNumber": "943851697",
+    "hireDate": "2015-03-29",
+    "salary": 5455,
+    "department": {
+      "id": 5,
+      "code": "D05",
+      "name": "Soporte",
+      "phoneNumber": "321478"
+    }
+  }
+]
+````
+
+La consulta SQL principal generada tras la petición anterior es la siguiente.
+
+````bash
+2024-10-28T17:08:41.877-05:00 DEBUG 17436 --- [spring-data-jpa-specifications] [nio-8080-exec-5] org.hibernate.SQL                        : 
+    select
+        e1_0.id,
+        e1_0.department_id,
+        e1_0.email,
+        e1_0.first_name,
+        e1_0.hire_date,
+        e1_0.last_name,
+        e1_0.phone_number,
+        e1_0.salary 
+    from
+        employees e1_0 
+    join
+        departments d1_0 
+            on d1_0.id=e1_0.department_id 
+    where
+        1<>1 
+        or d1_0.name=? 
+    order by
+        e1_0.first_name desc,
+        e1_0.id
+````
+
+Realizamos una petición enviándo valores para el `initialDate` y `firstName`.
+
+````bash
+$ curl -v -G --data "initialDate=2019-01-01&firstName=Liz" http://localhost:8080/api/v1/employees/search-no-pagination | jq
+>
+< HTTP/1.1 200
+< Content-Type: application/json
+< Transfer-Encoding: chunked
+< Date: Mon, 28 Oct 2024 22:11:04 GMT
+<
+[
+  {
+    "id": 9,
+    "firstName": "Liz",
+    "lastName": "Azaña",
+    "email": "estela@gmail.com",
+    "phoneNumber": "943852525",
+    "hireDate": "2020-03-15",
+    "salary": 2600,
+    "department": {
+      "id": 4,
+      "code": "D04",
+      "name": "Recursos Humanos",
+      "phoneNumber": "378965"
+    }
+  }
+]
+````
+
+La consulta SQL principal generada en consola del ide es la siguiente.
+
+````bash
+2024-10-28T17:11:04.270-05:00  INFO 17436 --- [spring-data-jpa-specifications] [nio-8080-exec-7] d.m.s.a.p.r.s.EmployeeSpecifications     : 2019-01-01 es menor que la fecha actual 2024-10-28
+2024-10-28T17:11:04.275-05:00 DEBUG 17436 --- [spring-data-jpa-specifications] [nio-8080-exec-7] org.hibernate.SQL                        : 
+    select
         e1_0.id,
         e1_0.department_id,
         e1_0.email,
@@ -1291,7 +1420,8 @@ select
         employees e1_0 
     where
         1=1 
-        or 1<>1 
+        and e1_0.hire_date between ? and ? 
+        and e1_0.first_name like replace(?, '\\', '\\\\') 
     order by
         e1_0.first_name desc,
         e1_0.id
